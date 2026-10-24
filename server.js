@@ -1,27 +1,112 @@
-// Optional Node.js server: serves these static files and forwards public booking
-// requests to the existing Girudo server, which already has the Telegram bot.
-// No Telegram token belongs in index.html or script.js.
-import {createServer} from 'node:http';
-import {readFile} from 'node:fs/promises';
-import {fileURLToPath} from 'node:url';
-const upstream = 'https://hirudo-care.bziksievmuhamed.chatgpt.site';
-const files = {'/':['index.html','text/html; charset=utf-8'],'/index.html':['index.html','text/html; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],'/script.js':['script.js','text/javascript; charset=utf-8'],'/botanical.svg':['botanical.svg','image/svg+xml']};
-createServer(async (req,res) => {
-  const path = new URL(req.url, 'http://localhost').pathname;
-  try {
-    const api = (path === '/api/slots' && req.method === 'GET') || (path === '/api/bookings' && req.method === 'POST');
-    if (api) {
-      if (req.method === 'POST') {
-        const origin = req.headers.origin;
-        if (!origin || new URL(origin).host !== req.headers.host) {res.writeHead(403);res.end();return;}
-      }
-      let body = '';
-      for await (const chunk of req) {body += chunk;if (Buffer.byteLength(body) > 4096) {res.writeHead(413);res.end();return;}}
-      const response = await fetch(upstream + path, {method:req.method,headers:{'Origin':upstream,'Content-Type':'application/json'},...(req.method === 'POST' ? {body} : {}),signal:AbortSignal.timeout(30000)});
-      res.writeHead(response.status, {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(await response.text());return;
+// Serve the exported files and forward booking requests to the live backend.
+// The Telegram bot token stays on the live backend and is never copied here.
+
+import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+
+const LIVE_BACKEND = "https://hirudo-care.bziksievmuhamed.chatgpt.site";
+const PORT = Number(process.env.PORT || 3000);
+
+const STATIC_FILES = {
+  "/": ["index.html", "text/html; charset=utf-8"],
+  "/index.html": ["index.html", "text/html; charset=utf-8"],
+  "/styles.css": ["styles.css", "text/css; charset=utf-8"],
+  "/script.js": ["script.js", "text/javascript; charset=utf-8"],
+  "/botanical.svg": ["botanical.svg", "image/svg+xml"],
+};
+
+async function forwardBookingRequest(request, response, pathname) {
+  if (request.method === "POST") {
+    const origin = request.headers.origin;
+    const requestHost = request.headers.host;
+
+    if (!origin || new URL(origin).host !== requestHost) {
+      response.writeHead(403);
+      response.end();
+      return;
     }
-    if (req.method !== 'GET' || !files[path]) {res.writeHead(404);res.end('Not found');return;}
-    const [name,type] = files[path];const bytes = await readFile(fileURLToPath(new URL(name,import.meta.url)));
-    res.writeHead(200,{'Content-Type':type,'X-Content-Type-Options':'nosniff'});res.end(bytes);
-  } catch {res.writeHead(502,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({error:'Сервис временно недоступен. Попробуйте позже.'}));}
-}).listen(Number(process.env.PORT || 3000),'0.0.0.0',() => console.log('Girudo server is ready'));
+  }
+
+  let body = "";
+
+  for await (const chunk of request) {
+    body += chunk;
+
+    if (Buffer.byteLength(body) > 4096) {
+      response.writeHead(413);
+      response.end();
+      return;
+    }
+  }
+
+  const upstreamResponse = await fetch(`${LIVE_BACKEND}${pathname}`, {
+    method: request.method,
+    headers: {
+      Origin: LIVE_BACKEND,
+      "Content-Type": "application/json",
+    },
+    ...(request.method === "POST" ? { body } : {}),
+    signal: AbortSignal.timeout(30000),
+  });
+
+  response.writeHead(upstreamResponse.status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  response.end(await upstreamResponse.text());
+}
+
+async function serveStaticFile(response, pathname) {
+  const file = STATIC_FILES[pathname];
+
+  if (!file) {
+    response.writeHead(404);
+    response.end("Not found");
+    return;
+  }
+
+  const [filename, contentType] = file;
+  const fileUrl = new URL(filename, import.meta.url);
+  const contents = await readFile(fileURLToPath(fileUrl));
+
+  response.writeHead(200, {
+    "Content-Type": contentType,
+    "X-Content-Type-Options": "nosniff",
+  });
+  response.end(contents);
+}
+
+const server = createServer(async (request, response) => {
+  const pathname = new URL(request.url, "http://localhost").pathname;
+  const isSlotsRequest = pathname === "/api/slots" && request.method === "GET";
+  const isBookingRequest = pathname === "/api/bookings" && request.method === "POST";
+
+  try {
+    if (isSlotsRequest || isBookingRequest) {
+      await forwardBookingRequest(request, response, pathname);
+      return;
+    }
+
+    if (request.method !== "GET") {
+      response.writeHead(404);
+      response.end("Not found");
+      return;
+    }
+
+    await serveStaticFile(response, pathname);
+  } catch {
+    response.writeHead(502, {
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    response.end(
+      JSON.stringify({
+        error: "Сервис временно недоступен. Попробуйте позже.",
+      }),
+    );
+  }
+});
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Girudo server is listening on port ${PORT}`);
+});

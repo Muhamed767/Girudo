@@ -1,0 +1,37 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  role="img"
+  aria-labelledby="title"
+>
+  <title id="title">Гирудо</title>
+
+  <rect width="64" height="64" rx="18" fill="#e9ede0" />
+  <circle
+    cx="32"
+    cy="32"
+    r="25"
+    fill="none"
+    stroke="#334d3b"
+    stroke-opacity=".16"
+    stroke-width="1.5"
+  />
+
+  <path
+    d="M41 12c9 3 12 12 7 20-4 7-13 9-21 12-7 3-11 8-8 13 2 4 8 5 15 2"
+    fill="none"
+    stroke="#334d3b"
+    stroke-linecap="round"
+    stroke-width="9"
+  />
+  <path
+    d="M42 16c5 3 6 9 3 14-4 5-11 7-19 10"
+    fill="none"
+    stroke="#b49a5e"
+    stroke-linecap="round"
+    stroke-width="2"
+  />
+
+  <circle cx="41" cy="12" r="4" fill="#334d3b" />
+  <circle cx="34" cy="59" r="3.5" fill="#334d3b" />
+</svg>
